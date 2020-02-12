@@ -1,0 +1,26 @@
+<h1>Trace List</h1>
+
+<table>
+  <thead>
+  <tr>
+    <th>Trace Id</th>
+    <th>Span Name</th>
+    <th>Span id</th>
+    <th>Span Timestamp</th>
+    <th>Span Duration</th>
+  </tr>
+  </thead>
+  <tbody>
+  <tr *ngFor="let span of spans | async">
+    <td>
+      <a [routerLink]="['/traces', span.id]">
+        {{span.traceId}}<span *ngIf="span.finished">*</span>
+      </a>
+    </td>
+    <td>{{span.name}}</td>
+    <td>{{span.id}}</td>
+    <td>{{span.getTime()}}</td>
+    <td>{{span.duration}}</td>
+  </tr>
+  </tbody>
+</table>

@@ -1,0 +1,26 @@
+table {
+  text-align: right;
+  width: 100%;
+  border-spacing: 0;
+}
+
+th:first-child, td:first-child {
+  text-align: left;
+}
+
+th:first-child, th:last-child, td:first-child, td:last-child {
+  padding: 10px;
+}
+
+th {
+  border-bottom: 2px solid gainsboro;
+}
+
+th, td {
+  text-align: right;
+  padding: 10px;
+}
+
+td {
+  border-bottom: 1px solid gainsboro;
+}

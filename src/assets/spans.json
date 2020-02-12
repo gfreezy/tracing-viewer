@@ -1,0 +1,12 @@
+[
+  {"id":1581336464009138,"parent_id":null,"trace_id":1581336464009128,"name":"app_start","timestamp":1581336464064702,"duration":0,"tags":{"work_units":"2"},"finished":false},
+  {"id":1581336464009139,"parent_id":1581336464009138,"trace_id":1581336464009128,"name":"expensive_work","timestamp":1581336464064858,"duration":0,"tags":{},"finished":false},
+  {"id":1581336464009140,"parent_id":1581336464009139,"trace_id":1581336464009128,"name":"expensive_step_1","timestamp":1581336464064921,"duration":0,"tags":{},"finished":false},
+  {"id":1581336464009140,"parent_id":1581336464009139,"trace_id":1581336464009128,"name":"expensive_step_1","timestamp":1581336464064921,"duration":25601,"tags":{},"finished":false},
+  {"id":1581336464009140,"parent_id":1581336464009139,"trace_id":1581336464009128,"name":"expensive_step_1","timestamp":1581336464064921,"duration":25601,"tags":{},"finished":true},
+  {"id":1581336464009141,"parent_id":1581336464009139,"trace_id":1581336464009128,"name":"expensive_step_2","timestamp":1581336464090699,"duration":0,"tags":{},"finished":false},
+  {"id":1581336464009141,"parent_id":1581336464009139,"trace_id":1581336464009128,"name":"expensive_step_2","timestamp":1581336464090699,"duration":27580,"tags":{},"finished":false},
+  {"id":1581336464009141,"parent_id":1581336464009139,"trace_id":1581336464009128,"name":"expensive_step_2","timestamp":1581336464090699,"duration":27580,"tags":{},"finished":true},
+  {"id":1581336464009139,"parent_id":1581336464009138,"trace_id":1581336464009128,"name":"expensive_work","timestamp":1581336464064858,"duration":53541,"tags":{},"finished":false},
+  {"id":1581336464009139,"parent_id":1581336464009138,"trace_id":1581336464009128,"name":"expensive_work","timestamp":1581336464064858,"duration":53541,"tags":{},"finished":true}
+]
