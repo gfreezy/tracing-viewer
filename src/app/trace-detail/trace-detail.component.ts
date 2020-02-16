@@ -1,8 +1,8 @@
 import {Component, OnInit} from '@angular/core';
 import {ActivatedRoute, ParamMap} from '@angular/router';
-import {map, mergeMap, switchMap} from 'rxjs/operators';
-import {Span, TraceService} from '../trace.service';
-import {Observable} from 'rxjs';
+import {map, switchMap} from 'rxjs/operators';
+import {Log, Span, TraceService} from '../trace.service';
+import {combineLatest, Observable} from 'rxjs';
 import {tag} from 'rxjs-spy/operators';
 
 @Component({
@@ -12,7 +12,7 @@ import {tag} from 'rxjs-spy/operators';
 })
 export class TraceDetailComponent implements OnInit {
   trace: Observable<Span | undefined>;
-  childSpans: Observable<[number, Span][]>;
+  childSpans: Observable<[number, Span, Log[]][]>;
 
   constructor(
     private route: ActivatedRoute,
@@ -26,14 +26,28 @@ export class TraceDetailComponent implements OnInit {
       tag('trace-detail-id')
     );
 
-    this.childSpans = this.trace.pipe(
+    const childSpans = this.trace.pipe(
       switchMap(trace => {
         if (trace === undefined) {
           return [];
         } else {
-          return this.traceService.getDescendentSpans(trace.id);
+          return this.traceService.getSelfAndDescendentSpans(trace.id);
         }
       })
+    );
+
+    this.childSpans = combineLatest([childSpans, this.traceService.streamLogMaps]).pipe(
+      map(observables => {
+          const [spans, logMaps] = observables;
+          const spansWithLogs: [number, Span, Log[]][] = [];
+          for (const [level, span] of spans) {
+            const logs = logMaps.get(span.id) ?? [];
+            spansWithLogs.push([level, span, logs]);
+          }
+          return spansWithLogs;
+        }
+      ),
+      tag('childSpans')
     );
   }
 }

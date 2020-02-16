@@ -1,6 +1,6 @@
 import {Injectable} from '@angular/core';
-import {bufferTime, filter, map} from 'rxjs/operators';
-import {concat, Observable, of, Subject} from 'rxjs';
+import {bufferTime, distinct, map} from 'rxjs/operators';
+import {concat, Observable, of, partition, Subject} from 'rxjs';
 import {jsonToCamelCase} from './utils/json-to-camel-case';
 import {webSocket} from 'rxjs/webSocket';
 import {websocketUrl} from './utils/ws-url';
@@ -11,49 +11,70 @@ import {tag} from 'rxjs-spy/operators';
 })
 export class TraceService {
   private readonly streamSpans: Subject<Span[]> = new Subject<Span[]>();
+  private readonly streamLogs: Subject<Log[]> = new Subject<Log[]>();
 
   private readonly topSpans: Span[] = [];
   private readonly streamTopSpans: Observable<Span[]>;
   private readonly spanMaps: Map<string, Span> = new Map<string, Span>();
-  private streamSpanMaps: Observable<Map<string, Span>>;
+  private readonly streamSpanMaps: Observable<Map<string, Span>>;
+
+  private readonly logMaps: Map<string, Log[]> = new Map<string, Log[]>();
+  readonly streamLogMaps: Observable<Map<string, Log[]>>;
 
   constructor() {
     const websocket = webSocket(websocketUrl('/api/spans'));
-    websocket.asObservable().pipe(
-      map((span: Span) => new Span(jsonToCamelCase(span))),
-      tag('websocket')
-    ).pipe(
-      bufferTime(500)
+    const [spanStream, logStream] = partition(
+      websocket.asObservable()
+        .pipe(
+          map((d: any) => {
+            return {data: jsonToCamelCase(JSON.parse(d.data)), type: d.type};
+          }),
+        ),
+      data => data.type === 'span');
+
+    spanStream.pipe(
+      map((span) => new Span(span.data)),
+      bufferTime(500),
+      distinct(v => v.map(s => s.id).join(',')),
+      tag('spanStream')
     ).subscribe(this.streamSpans);
 
-    this.initStreamSpanMaps().subscribe();
-    this.initStreamTopSpans().subscribe();
+    logStream.pipe(
+      map((log) => new Log(log.data)),
+      bufferTime(500),
+      distinct(v => v.map(s => s.id).join(',')),
+      tag('logStream')
+    ).subscribe(this.streamLogs);
 
-    this.streamSpanMaps = this.initStreamSpanMaps();
-    this.streamTopSpans = this.initStreamTopSpans();
+    this.initStreamSpanMaps();
+    this.initStreamTopSpans();
+    this.initStreamLogMaps();
+
+    // subscribe order matters, below subscriptions must follow inits before.
+    this.streamSpanMaps = concat(of(this.spanMaps), this.streamSpans).pipe(map(_ => this.spanMaps), tag('streamSpanMaps'));
+    this.streamTopSpans = concat(of(this.streamSpans), this.streamSpans).pipe(map(_ => this.topSpans), tag('streamTopSpans'));
+
+    this.streamLogMaps = concat(of(this.streamLogs), this.streamLogs).pipe(map(_ => this.logMaps), tag('streamLogMaps'));
   }
 
-  initStreamSpanMaps(): Observable<Map<string, Span>> {
-    return this.streamSpans.pipe(
-      map(spans => {
-          for (const span of spans) {
-            const old = this.spanMaps.get(span.id);
-            if (old !== null && old !== undefined) {
-              old.update(span);
-            } else {
-              this.spanMaps.set(span.id, span);
-            }
+  initStreamSpanMaps() {
+    this.streamSpans.subscribe(
+      spans => {
+        for (const span of spans) {
+          const old = this.spanMaps.get(span.id);
+          if (old !== null && old !== undefined) {
+            old.update(span);
+          } else {
+            this.spanMaps.set(span.id, span);
           }
-          return this.spanMaps;
-        },
-        tag('streamSpanMaps')
-      )
+        }
+      }
     );
   }
 
-  initStreamTopSpans(): Observable<Span[]> {
+  initStreamTopSpans() {
     const topSpans = this.topSpans;
-    const deduplicate = map((spans: Span[]) => {
+    const deduplicate = (spans: Span[]) => {
       for (const span of spans) {
         if (span.parentId !== null) {
           continue;
@@ -73,25 +94,34 @@ export class TraceService {
 
       const MaxSize = 1000;
       topSpans.splice(0, Math.max(0, topSpans.length - MaxSize));
+    };
 
-      return topSpans;
-    });
+    this.streamSpans.subscribe(deduplicate);
+  }
 
-    return this.streamSpans.pipe(
-      deduplicate,
-      tag('streamTopSpans')
+  initStreamLogMaps() {
+    this.streamLogs.subscribe(logs => {
+        for (const log of logs) {
+          let spanLogs = this.logMaps.get(log.spanId);
+          if (!spanLogs) {
+            spanLogs = [];
+            this.logMaps.set(log.spanId, spanLogs);
+          }
+          spanLogs.push(log);
+        }
+      }
     );
   }
 
   listTopSpans(): Observable<Span[]> {
-    return concat(of(this.topSpans), this.streamTopSpans)
+    return this.streamTopSpans
       .pipe(
         tag('listTopSpans')
       );
   }
 
   getSpan(spanId: string | null): Observable<Span | undefined> {
-    return concat(of(this.spanMaps), this.streamSpanMaps).pipe(
+    return this.streamSpanMaps.pipe(
       map(maps => {
         if (spanId === null) {
           return undefined;
@@ -103,8 +133,12 @@ export class TraceService {
     );
   }
 
-  getDescendentSpans(spanId: string): Observable<[number, Span][]> {
-    const spans: [number, Span][] = [];
+  getSelfAndDescendentSpans(spanId: string): Observable<[number, Span][]> {
+    const self = this.spanMaps.get(spanId);
+    if (!self) {
+      throw new Error('span not exist');
+    }
+    const spans: [number, Span][] = [[0, self]];
     const inSpans = Array.from(this.spanMaps.values()).sort((a, b) => a.timestamp - b.timestamp);
     this._getDescendentSpans(spanId, 1, spans, inSpans);
     return of(spans);
@@ -126,6 +160,11 @@ function* getChildSpans(spanId: string, fromSpans: Span[]) {
   }
 }
 
+function toDate(ts: number): string {
+  const date = new Date(ts / 1000);
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDay()} ${date.getHours()}:${date.getMinutes()}:${date.getSeconds()}`;
+}
+
 export class Span {
   id: string;
   parentId: string | null;
@@ -135,15 +174,12 @@ export class Span {
   duration: number;
   tags: Record<string, string>;
   finished: boolean;
+  time: string;
 
   constructor(obj: any) {
     Object.assign(this, obj);
-  }
 
-  getTime(): string {
-    const date = new Date(this.timestamp / 1000);
-
-    return `${date.getFullYear()}-${date.getMonth()}-${date.getDay()} ${date.getHours()}:${date.getMinutes()}:${date.getSeconds()}`;
+    this.time = toDate(this.timestamp);
   }
 
   update(span: Span) {
@@ -159,6 +195,22 @@ export class Span {
       this.finished = span.finished;
     }
     this.timestamp = ts;
+    this.time = toDate(this.timestamp);
     this.duration = duration;
+  }
+}
+
+
+export class Log {
+  id: string;
+  traceId: string;
+  spanId: string;
+  timestamp: number;
+  fields: Record<string, string>;
+  time: string;
+
+  constructor(obj: any) {
+    Object.assign(this, obj);
+    this.time = toDate(this.timestamp);
   }
 }

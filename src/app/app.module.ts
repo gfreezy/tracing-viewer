@@ -7,11 +7,13 @@ import {TraceListComponent} from './trace-list/trace-list.component';
 import {HttpClientModule} from '@angular/common/http';
 import {TraceDetailComponent} from './trace-detail/trace-detail.component';
 import {create} from 'rxjs-spy';
+import { CallPipe } from './call.pipe';
 @NgModule({
   declarations: [
     AppComponent,
     TraceListComponent,
     TraceDetailComponent,
+    CallPipe,
   ],
   imports: [
     BrowserModule,
@@ -28,4 +30,4 @@ import {create} from 'rxjs-spy';
 export class AppModule {
 }
 
-const spy = create();
+create();
